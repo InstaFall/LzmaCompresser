@@ -81,11 +81,24 @@ int main()
                 continue;
             }
 
+            int fb;
+            printf("Enter fb (5 to 273): ");
+            scanf("%d", &fb);
+            while (getchar() != '\n')
+                ; // Clear the input buffer
+
+            if (!(fb >= 5 && fb <= 273))
+            {
+                printf("Enter valid number in range 5 to 273.\n");
+                free(buf);
+                free(outBuf);
+                continue;
+            }
             res = LzmaCompress(
                 outBuf + outPropsSize + sizeof(size_t), &destLen, // Allocate the first 5 + sizeof(sizet) bytes of the buffer for props and uncompressed size information
                 buf, bufSize,
                 outProps, &outPropsSize,
-                5, (1 << 24), 3, 0, 2, 32, 1);
+                5, (1 << 20), 3, 0, 2, fb, 1); // 1 << 20: 1MB , 1 << 24: 16 MB
 
             if (res != SZ_OK)
             {
