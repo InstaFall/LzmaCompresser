@@ -1,12 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "LzmaLib.h"
-#include <Windows.h>
+#include "src/C/LzmaLib.h"
 #include <string.h>
+
+#define MAX_SIZE 256
+
+typedef enum
+{
+    APPEND_SUCCESS,
+    APPEND_FAIL
+} status;
+
+int AppendLzmaExtension(size_t len, char *filename); // Handle file extension .lzma
 
 int main()
 {
-    printf("LZMA Compression ------------\n");
+    printf("----------- LZMA Compression ------------\n");
 
     while (1)
     {
@@ -14,64 +23,71 @@ int main()
         unsigned char *buf;
         size_t bufSize, processedSize, uncompressedSize;
         int res;
-        char filename[256];
-        char outputFilename[256];
+        char filename[MAX_SIZE];
+        char outputFilename[MAX_SIZE];
 
         printf("Enter 'c' to compress or 'd' to decompress: ");
         int operation = getchar();
         while (getchar() != '\n')
             ; // Clear the input buffer
 
-        printf("Enter the file name: ");
-        fgets(filename, sizeof(filename), stdin);
-        size_t len = strlen(filename);
-        if (len > 0 && filename[len - 1] == '\n')
-        {
-            filename[len - 1] = '\0';
-        }
-
-        printf("Enter the output file name: ");
-        fgets(outputFilename, sizeof(outputFilename), stdin);
-        len = strlen(outputFilename);
-        if (len > 0 && outputFilename[len - 1] == '\n')
-        {
-            outputFilename[len - 1] = '\0';
-        }
-
-        f = fopen(filename, "rb");
-        if (f == NULL)
-        {
-            printf("Cannot open file '%s'.\n", filename);
-            continue;
-        }
-
-        // Read the file into memory
-        fseek(f, 0, SEEK_END);
-        bufSize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-
-        buf = (unsigned char *)malloc(bufSize);
-        if (buf == NULL)
-        {
-            printf("Cannot allocate memory.\n");
-            fclose(f);
-            continue;
-        }
-
-        processedSize = fread(buf, 1, bufSize, f);
-        fclose(f);
-        if (processedSize != bufSize)
-        {
-            printf("Cannot read file.\n");
-            free(buf);
-            continue;
-        }
-
         if (operation == 'c')
         {
             size_t outPropsSize = LZMA_PROPS_SIZE;
-            size_t destLen = bufSize + outPropsSize + (bufSize / 3) + 128;
             unsigned char outProps[LZMA_PROPS_SIZE];
+
+            printf("Enter the file name: ");
+            fgets(filename, sizeof(filename), stdin);
+            size_t len = strlen(filename);
+            if (len > 0 && filename[len - 1] == '\n')
+            {
+                filename[len - 1] = '\0';
+            }
+
+            printf("Enter the output file name: ");
+            fgets(outputFilename, sizeof(outputFilename), stdin);
+            len = strlen(outputFilename);
+            if (len > 0 && outputFilename[len - 1] == '\n')
+            {
+                outputFilename[len - 1] = '\0';
+            }
+
+            if (APPEND_FAIL == AppendLzmaExtension(len - 1, outputFilename))
+            {
+                printf("Operation failed. Filename too long.\n");
+                continue;
+            }
+
+            f = fopen(filename, "rb");
+            if (f == NULL)
+            {
+                printf("Cannot open file '%s'.\n", filename);
+                continue;
+            }
+
+            // Read the file into memory
+            fseek(f, 0, SEEK_END);
+            bufSize = ftell(f);
+            fseek(f, 0, SEEK_SET);
+
+            buf = (unsigned char *)malloc(bufSize);
+            if (buf == NULL)
+            {
+                printf("Cannot allocate memory.\n");
+                fclose(f);
+                continue;
+            }
+
+            processedSize = fread(buf, 1, bufSize, f);
+            fclose(f);
+            if (processedSize != bufSize)
+            {
+                printf("Cannot read file.\n");
+                free(buf);
+                continue;
+            }
+
+            size_t destLen = bufSize + outPropsSize + (bufSize / 3) + 128;
             unsigned char *outBuf = (unsigned char *)malloc(destLen);
 
             if (outBuf == NULL)
@@ -82,7 +98,7 @@ int main()
             }
 
             int fb;
-            printf("Enter fb (5 to 273): ");
+            printf("Enter word size fb (5 to 273): ");
             scanf("%d", &fb);
             while (getchar() != '\n')
                 ; // Clear the input buffer
@@ -128,12 +144,40 @@ int main()
         }
         else if (operation == 'd')
         {
+            printf("Enter the file name: ");
+            fgets(filename, sizeof(filename), stdin);
+            size_t len = strlen(filename);
+            if (len > 0 && filename[len - 1] == '\n')
+            {
+                filename[len - 1] = '\0';
+            }
+
+            // Append .lzma if not present
+            if (APPEND_FAIL == AppendLzmaExtension(len - 1, filename)) // len - 1 because we removed \n
+            {
+                printf("Operation failed. Filename too long.\n");
+                continue;
+            }
+
+            printf("Enter the output file name: ");
+            fgets(outputFilename, sizeof(outputFilename), stdin);
+            len = strlen(outputFilename);
+            if (len > 0 && outputFilename[len - 1] == '\n')
+            {
+                outputFilename[len - 1] = '\0';
+            }
+
             f = fopen(filename, "rb");
             if (f == NULL)
             {
                 printf("Cannot open file '%s'.\n", filename);
                 continue;
             }
+
+            // Read the file into memory
+            fseek(f, 0, SEEK_END);
+            bufSize = ftell(f);
+            fseek(f, 0, SEEK_SET);
 
             // Read the uncompressed size from the file
             fread(&uncompressedSize, sizeof(uncompressedSize), 1, f);
@@ -144,8 +188,8 @@ int main()
 
             // The remaining file size is the size of the compressed data
             bufSize = bufSize - sizeof(uncompressedSize) - LZMA_PROPS_SIZE;
-            unsigned char *compBuf = (unsigned char *)malloc(bufSize);
-            if (compBuf == NULL)
+            buf = (unsigned char *)malloc(bufSize);
+            if (buf == NULL)
             {
                 printf("Cannot allocate memory.\n");
                 fclose(f);
@@ -153,7 +197,7 @@ int main()
             }
 
             // Read the compressed data into the buffer
-            fread(compBuf, 1, bufSize, f);
+            fread(buf, 1, bufSize, f);
             fclose(f);
 
             // Allocate memory for the decompression buffer
@@ -161,18 +205,16 @@ int main()
             if (decompBuf == NULL)
             {
                 printf("Cannot allocate memory for the decompression buffer.\n");
-                free(compBuf);
+                free(buf);
                 continue;
             }
 
             size_t srcLen = bufSize;
             res = LzmaUncompress(
                 decompBuf, &uncompressedSize, // output
-                compBuf, &srcLen,             // input
+                buf, &srcLen,                 // input
                 props, LZMA_PROPS_SIZE        // properties
             );
-
-            free(compBuf); // Free the compression buffer as it's no longer needed
 
             if (res != SZ_OK)
             {
@@ -198,11 +240,32 @@ int main()
         {
             printf("Invalid operation. Please enter 'c' to compress or 'd' to decompress.\n");
         }
-
         free(buf);
         printf("Operation completed successfully, saved as '%s'.\n", outputFilename);
-        Sleep(1000);
     }
 
     return 0;
+}
+
+int AppendLzmaExtension(size_t len, char *filename)
+{
+    // Check if the filename ends with ".lzma"
+    const char *extension = ".lzma";
+    size_t extension_len = strlen(extension);
+
+    if (len < extension_len || strcmp(filename + len - extension_len, extension) != 0)
+    {
+        // If the filename does not end with ".lzma", append the extension
+        if (len + extension_len < MAX_SIZE)
+        {
+            strcat(filename, extension);
+            return APPEND_SUCCESS; // Extension appended successfully
+        }
+        else
+        {
+            // Filename too long
+            return APPEND_FAIL; // Indicate failure
+        }
+    }
+    return APPEND_SUCCESS; // No need to append, it's already correct
 }
